@@ -9,6 +9,7 @@
 'use strict';
 
 const assume = require('assume');
+const fs = require('fs');
 const path = require('path');
 const { EOL } = require('os');
 const isStream = require('is-stream');
@@ -47,6 +48,50 @@ describe('Logger Instance', function () {
 
       assume(logger.transports.length).equals(1);
       assume(logger.transports[0].name).equals('console');
+    });
+
+    it('closes existing file transports before reconfiguration', async function () {
+      const oldLogFile = path.join(testLogFixturesPath, 'configure-old.log');
+      const newLogFile = path.join(testLogFixturesPath, 'configure-new.log');
+      [oldLogFile, newLogFile].forEach(file => {
+        if (fs.existsSync(file)) fs.unlinkSync(file);
+      });
+
+      const oldTransport = new winston.transports.File({ filename: oldLogFile });
+      const logger = winston.createLogger({ transports: [oldTransport] });
+      let loggerFinished = false;
+
+      try {
+        logger.info('before reconfiguration');
+        logger.configure({
+          transports: [
+            new winston.transports.File({ filename: newLogFile })
+          ]
+        });
+
+        assume(oldTransport._stream.writableEnded).true();
+        logger.info('after reconfiguration');
+        await new Promise((resolve, reject) => {
+          logger.once('finish', () => {
+            loggerFinished = true;
+            resolve();
+          });
+          logger.once('error', reject);
+          logger.end();
+        });
+
+        assume(fs.readFileSync(newLogFile, 'utf8')).includes('after reconfiguration');
+      } finally {
+        if (!loggerFinished) {
+          logger.end();
+        }
+        if (!oldTransport._stream.writableEnded) {
+          oldTransport.close();
+        }
+        [oldLogFile, newLogFile].forEach(file => {
+          if (fs.existsSync(file)) fs.unlinkSync(file);
+        });
+      }
     });
 
     it('.configure({ transports, format })', function () {
