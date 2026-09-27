@@ -58,6 +58,7 @@ describe('Logger Instance', function () {
       });
 
       const oldTransport = new winston.transports.File({ filename: oldLogFile });
+      const close = jest.spyOn(oldTransport, 'close');
       const logger = winston.createLogger({ transports: [oldTransport] });
       let loggerFinished = false;
 
@@ -69,7 +70,7 @@ describe('Logger Instance', function () {
           ]
         });
 
-        assume(oldTransport._stream.writableEnded).true();
+        expect(close).toHaveBeenCalledTimes(1);
         logger.info('after reconfiguration');
         await new Promise((resolve, reject) => {
           logger.once('finish', () => {
