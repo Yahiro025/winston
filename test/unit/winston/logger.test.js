@@ -75,6 +75,8 @@ describe('Logger Instance', function () {
           ]
         });
 
+        expect(close).toHaveBeenCalledTimes(1);
+        assume(oldTransport._stream._writableState.ending).true();
         logger.info('after reconfiguration');
         await new Promise((resolve, reject) => {
           logger.once('finish', () => {
@@ -97,6 +99,40 @@ describe('Logger Instance', function () {
           if (fs.existsSync(file)) fs.unlinkSync(file);
         });
       }
+    });
+
+    it('invokes each transport close once when reconfiguring', function () {
+      function createTransport() {
+        let closes = 0;
+        const transport = new TransportStream({
+          log(info, callback) {
+            callback();
+          },
+          close() {
+            closes += 1;
+            if (closes > 1) {
+              throw new Error('close called twice');
+            }
+          }
+        });
+        transport.closes = () => closes;
+        return transport;
+      }
+
+      const first = createTransport();
+      const second = createTransport();
+      const logger = winston.createLogger({ transports: [first, second] });
+
+      logger.configure({
+        transports: [new winston.transports.Console()]
+      });
+
+      assume(first.closes()).equals(1);
+      assume(second.closes()).equals(1);
+      assume(typeof first.close).equals('function');
+      assume(typeof second.close).equals('function');
+      assume(logger.transports.length).equals(1);
+      assume(logger.transports[0].name).equals('console');
     });
 
     it('.configure({ transports, format })', function () {
